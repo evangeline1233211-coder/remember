@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Remember — Spaced Repetition Tracker</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161a22;
+    --panel-2: #1d222d;
+    --text: #e6e8ee;
+    --muted: #8b93a7;
+    --accent: #4ade80;
+    --accent-2: #22c55e;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --border: #262c39;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px 80px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .sub code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+  .add {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .add input {
+    flex: 1;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+  }
+  .add input:focus { border-color: var(--accent); }
+  .add button {
+    background: var(--accent);
+    color: #07140c;
+    border: 0;
+    padding: 0 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .add button:hover { background: var(--accent-2); }
+
+  .summary {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .pill {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+  .pill.due { color: var(--warn); border-color: #4a3a18; }
+
+  .item {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .item.due { border-color: #5a4520; }
+  .item.done { opacity: 0.55; }
+  .row1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .text { font-size: 15px; line-height: 1.4; word-break: break-word; }
+  .meta {
+    color: var(--muted);
+    font-size: 12px;
+    white-space: nowrap;
+    text-align: right;
+  }
+  .meta .due-tag { color: var(--warn); font-weight: 600; }
+  .meta .done-tag { color: var(--accent); font-weight: 600; }
+
+  .bar-wrap {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    user-select: none;
+    padding: 4px;
+    margin: -4px -4px 6px;
+    border-radius: 6px;
+    transition: background 0.15s;
+  }
+  .bar-wrap:hover { background: rgba(255,255,255,0.03); }
+  .bar-wrap::after {
+    content: "✎";
+    color: var(--muted);
+    font-size: 12px;
+    opacity: 0.5;
+  }
+  .bar-wrap:hover::after { opacity: 1; }
+
+  .note-preview {
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--panel-2);
+    border-left: 2px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 0 4px 4px 0;
+    margin-bottom: 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    cursor: pointer;
+  }
+  .note-preview:hover { border-left-color: var(--accent); }
+  .note-preview .note-tag {
+    color: var(--accent);
+    font-weight: 600;
+    margin-right: 6px;
+  }
+
+  .note-panel {
+    margin-bottom: 10px;
+  }
+  .note-textarea {
+    width: 100%;
+    min-height: 70px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+  }
+  .note-textarea:focus { border-color: var(--accent); }
+  .note-status {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .note-status .saved { color: var(--accent); }
+  .bar {
+    flex: 1;
+    background: var(--panel-2);
+    border-radius: 4px;
+    height: 14px;
+    overflow: hidden;
+    position: relative;
+  }
+  .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-2), var(--accent));
+    transition: width 0.3s ease;
+  }
+  .bar.due {
+    height: 18px;
+    border: 1px solid #5a4520;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.15);
+  }
+  .bar.due .bar-fill {
+    background: repeating-linear-gradient(
+      45deg,
+      #f59e0b,
+      #f59e0b 6px,
+      #d97706 6px,
+      #d97706 12px
+    );
+    animation: stripes 1s linear infinite;
+  }
+  @keyframes stripes {
+    from { background-position: 0 0; }
+    to { background-position: 17px 0; }
+  }
+  .section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 18px 4px 8px;
+    font-weight: 600;
+  }
+  .section-label.due { color: var(--warn); }
+  .section-label:first-child { margin-top: 0; }
+  .bar-text { min-width: 56px; text-align: right; color: var(--text); }
+  .steps {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 10px;
+  }
+  .step {
+    flex: 1;
+    text-align: center;
+    font-size: 10px;
+    padding: 3px 0;
+    border-radius: 3px;
+    background: var(--panel-2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .step.done { background: #14321f; color: var(--accent); border-color: #1e4a2d; }
+  .step.current { background: #3a2a10; color: var(--warn); border-color: #5a4520; }
+
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .actions button {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .actions button:hover { border-color: var(--accent); }
+  .actions button.primary { background: var(--accent); color: #07140c; border-color: var(--accent); font-weight: 600; }
+  .actions button.primary:hover { background: var(--accent-2); }
+  .actions button.warn { color: var(--warn); }
+  .actions button.danger { color: var(--danger); }
+
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 40px 20px;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Remember</h1>
+  <div class="sub">
+    Spaced repetition schedule: <code>1 → 2 → 4 → 8 → 16 → 32 days</code>. Click <b>Reviewed</b> when you recall it; <b>Forgot</b> resets to day 1.
+  </div>
+
+  <div class="add">
+    <input id="input" type="text" placeholder="Add something to remember…" autofocus />
+    <button id="addBtn">Add</button>
+  </div>
+
+  <div class="summary" id="summary"></div>
+  <div id="list"></div>
+</div>
+
+<script>
+  const INTERVALS = [1, 2, 4, 8, 16, 32]; // days between reviews
+  const STORAGE_KEY = "remember.items.v1";
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  /** @typedef {{id:string,text:string,created:number,stage:number,nextDue:number,history:number[]}} Item */
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+    catch { return []; }
+  }
+  function save(items) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }
+
+  function uid() {
+    return Math.random().toString(36).slice(2, 10);
+  }
+
+  const expandedNotes = new Set();
+
+  function addItem(text) {
+    const items = load();
+    const now = Date.now();
+    items.unshift({
+      id: uid(),
+      text,
+      created: now,
+      stage: 0,                       // 0 = haven't reviewed yet; next review due in INTERVALS[0] days
+      nextDue: now + INTERVALS[0] * DAY_MS,
+      history: [now],
+      note: "",
+    });
+    save(items);
+    render();
+  }
+
+  function toggleNote(id) {
+    if (expandedNotes.has(id)) expandedNotes.delete(id);
+    else expandedNotes.add(id);
+    render();
+    if (expandedNotes.has(id)) {
+      const ta = document.querySelector(`textarea[data-id="${id}"]`);
+      if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    }
+  }
+
+  function saveNote(id, value) {
+    const items = load();
+    const it = items.find(i => i.id === id);
+    if (!it) return;
+    it.note = value;
+    save(items);
+    const status = document.querySelector(`.note-status[data-id="${id}"] .saved-indicator`);
+    if (status) {
+      status.textContent = "saved";
+      status.classList.add("saved");
+      clearTimeout(status._t);
+      status._t = setTimeout(() => { status.textContent = ""; status.classList.remove("saved"); }, 1200);
+    }
+  }
+
+  function markReviewed(id) {
+    const items = load();
+    const it = items.find(i => i.id === id);
+    if (!it) return;
+    it.stage = Math.min(it.stage + 1, INTERVALS.length);
+    it.history.push(Date.now());
+    if (it.stage < INTERVALS.length) {
+      it.nextDue = Date.now() + INTERVALS[it.stage] * DAY_MS;
+    } else {
+      it.nextDue = Infinity; // completed
+    }
+    save(items);
+    render();
+  }
+
+  function markForgot(id) {
+    const items = load();
+    const it = items.find(i => i.id === id);
+    if (!it) return;
+    it.stage = 0;
+    it.nextDue = Date.now() + INTERVALS[0] * DAY_MS;
+    it.history.push(-Date.now()); // negative = forgot event
+    save(items);
+    render();
+  }
+
+  function deleteItem(id) {
+    if (!confirm("Delete this item?")) return;
+    save(load().filter(i => i.id !== id));
+    render();
+  }
+
+  function formatWhen(ts) {
+    if (ts === Infinity) return "complete";
+    const diff = ts - Date.now();
+    const days = Math.round(diff / DAY_MS);
+    if (diff < 0) {
+      const d = Math.abs(days);
+      if (d === 0) return "due now";
+      return `overdue ${d}d`;
+    }
+    if (days === 0) {
+      const hrs = Math.round(diff / (60 * 60 * 1000));
+      return hrs <= 1 ? "due soon" : `in ${hrs}h`;
+    }
+    if (days === 1) return "in 1 day";
+    return `in ${days} days`;
+  }
+
+  function progressBar(stage) {
+    const total = INTERVALS.length;
+    const pct = Math.round((stage / total) * 100);
+    const filled = Math.round((stage / total) * 20);
+    const bar = "█".repeat(filled) + "░".repeat(20 - filled);
+    return { pct, bar, label: `${stage}/${total}` };
+  }
+
+  function render() {
+    const items = load();
+    const list = document.getElementById("list");
+    const summary = document.getElementById("summary");
+
+    if (items.length === 0) {
+      list.innerHTML = `<div class="empty">Nothing tracked yet. Add something above to get started.</div>`;
+      summary.innerHTML = "";
+      return;
+    }
+
+    const now = Date.now();
+    const dueCount = items.filter(i => i.nextDue <= now && i.stage < INTERVALS.length).length;
+    const doneCount = items.filter(i => i.stage >= INTERVALS.length).length;
+    summary.innerHTML = `
+      <span class="pill">${items.length} total</span>
+      ${dueCount > 0 ? `<span class="pill due">${dueCount} due now</span>` : ""}
+      <span class="pill">${doneCount} complete</span>
+    `;
+
+    // sort: due first (oldest due first), then by stage ascending, then completed last
+    items.sort((a, b) => {
+      const aDone = a.stage >= INTERVALS.length;
+      const bDone = b.stage >= INTERVALS.length;
+      if (aDone !== bDone) return aDone ? 1 : -1;
+      const aDue = a.nextDue <= now;
+      const bDue = b.nextDue <= now;
+      if (aDue !== bDue) return aDue ? -1 : 1;
+      return a.nextDue - b.nextDue;
+    });
+
+    const renderItem = (it) => {
+      const { pct, label } = progressBar(it.stage);
+      const done = it.stage >= INTERVALS.length;
+      const due = !done && it.nextDue <= now;
+      const stepsHtml = INTERVALS.map((d, i) => {
+        const cls = i < it.stage ? "done" : (i === it.stage && due ? "current" : "");
+        return `<div class="step ${cls}">${d}d</div>`;
+      }).join("");
+      const metaHtml = done
+        ? `<span class="done-tag">✓ complete</span>`
+        : due
+          ? `<span class="due-tag">${formatWhen(it.nextDue)}</span>`
+          : `next review ${formatWhen(it.nextDue)}`;
+
+      const note = it.note || "";
+      const isOpen = expandedNotes.has(it.id);
+      const notePreviewHtml = (!isOpen && note.trim())
+        ? `<div class="note-preview" onclick="toggleNote('${it.id}')"><span class="note-tag">📝 Note</span>${escapeHtml(note)}</div>`
+        : "";
+      const notePanelHtml = isOpen
+        ? `<div class="note-panel">
+             <textarea
+               class="note-textarea"
+               data-id="${it.id}"
+               placeholder="Write a note, hint, mnemonic, or extra context to help you remember…"
+               oninput="saveNote('${it.id}', this.value)"
+             >${escapeHtml(note)}</textarea>
+             <div class="note-status" data-id="${it.id}">
+               <span class="saved-indicator"></span>
+               <span>click bar to collapse</span>
+             </div>
+           </div>`
+        : "";
+
+      return `
+        <div class="item ${due ? "due" : ""} ${done ? "done" : ""}">
+          <div class="row1">
+            <div class="text">${escapeHtml(it.text)}</div>
+            <div class="meta">${metaHtml}</div>
+          </div>
+          <div class="bar-wrap" onclick="toggleNote('${it.id}')" title="Click to add or edit a note">
+            <span>[</span>
+            <div class="bar ${due ? "due" : ""}"><div class="bar-fill" style="width:${pct}%"></div></div>
+            <span>]</span>
+            <span class="bar-text">${pct}% ${label}</span>
+          </div>
+          ${notePreviewHtml}
+          ${notePanelHtml}
+          <div class="steps">${stepsHtml}</div>
+          <div class="actions">
+            ${done ? "" : `<button class="primary" onclick="markReviewed('${it.id}')">Reviewed</button>`}
+            ${done ? "" : `<button class="warn" onclick="markForgot('${it.id}')">Forgot</button>`}
+            <button class="danger" onclick="deleteItem('${it.id}')">Delete</button>
+          </div>
+        </div>
+      `;
+    };
+
+    const dueItems = items.filter(i => i.stage < INTERVALS.length && i.nextDue <= now);
+    const upcomingItems = items.filter(i => i.stage < INTERVALS.length && i.nextDue > now);
+    const doneItems = items.filter(i => i.stage >= INTERVALS.length);
+
+    let html = "";
+    if (dueItems.length) {
+      html += `<div class="section-label due">● Due today (${dueItems.length})</div>`;
+      html += dueItems.map(renderItem).join("");
+    }
+    if (upcomingItems.length) {
+      html += `<div class="section-label">Upcoming (${upcomingItems.length})</div>`;
+      html += upcomingItems.map(renderItem).join("");
+    }
+    if (doneItems.length) {
+      html += `<div class="section-label">Complete (${doneItems.length})</div>`;
+      html += doneItems.map(renderItem).join("");
+    }
+    list.innerHTML = html;
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  document.getElementById("addBtn").addEventListener("click", () => {
+    const input = document.getElementById("input");
+    const v = input.value.trim();
+    if (!v) return;
+    addItem(v);
+    input.value = "";
+    input.focus();
+  });
+  document.getElementById("input").addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("addBtn").click();
+  });
+
+  render();
+  // Re-render every minute so "due" status updates without a page reload.
+  // Skip when a textarea is focused so we don't interrupt note typing.
+  setInterval(() => {
+    if (document.activeElement && document.activeElement.tagName === "TEXTAREA") return;
+    render();
+  }, 60 * 1000);
+</script>
+</body>
+</html>

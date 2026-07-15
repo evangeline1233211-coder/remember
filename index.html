@@ -63,6 +63,38 @@
   }
   .add button:hover { background: var(--accent-2); }
 
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .toolbar button {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .toolbar button:hover { border-color: var(--accent); }
+
+  .title-edit {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 15px;
+    outline: none;
+    font-family: inherit;
+    line-height: 1.4;
+  }
+  .actions button.small { padding: 6px 10px; font-size: 11px; }
+  .actions button.small.shift { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
   .summary {
     display: flex;
     gap: 8px;
@@ -272,6 +304,12 @@
     <button id="addBtn">Add</button>
   </div>
 
+  <div class="toolbar">
+    <button id="exportBtn" title="Download all items as a JSON backup">⤓ Export</button>
+    <button id="importBtn" title="Load items from a JSON file">⤒ Import</button>
+    <input type="file" id="importFile" accept="application/json,.json" style="display:none" />
+  </div>
+
   <div class="summary" id="summary"></div>
   <div id="list"></div>
 </div>
@@ -296,6 +334,96 @@
   }
 
   const expandedNotes = new Set();
+  const editingTitles = new Set();
+
+  function exportData() {
+    const items = load();
+    if (items.length === 0) {
+      alert("Nothing to export yet.");
+      return;
+    }
+    const blob = new Blob([JSON.stringify(items, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `remember-${date}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function importData(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let parsed;
+      try {
+        parsed = JSON.parse(reader.result);
+        if (!Array.isArray(parsed)) throw new Error("expected an array of items");
+      } catch (e) {
+        alert("Couldn't read the file as JSON: " + e.message);
+        return;
+      }
+      const valid = parsed.every(it =>
+        it && typeof it.id === "string" && typeof it.text === "string" &&
+        typeof it.stage === "number" && (typeof it.nextDue === "number" || it.nextDue === null)
+      );
+      if (!valid) {
+        alert("This file doesn't look like a remember-backup JSON.");
+        return;
+      }
+      const existing = load();
+      const choice = prompt(
+        `Found ${parsed.length} item(s) in the file.\n\n` +
+        `Type "merge" to add new items to your ${existing.length} existing items (duplicates by ID are skipped).\n` +
+        `Type "replace" to WIPE your existing items and use only the imported ones.\n` +
+        `Anything else cancels.`
+      );
+      if (choice === "merge") {
+        const existingIds = new Set(existing.map(i => i.id));
+        const added = parsed.filter(i => !existingIds.has(i.id));
+        save(existing.concat(added));
+        render();
+        alert(`Merged. Added ${added.length} new item(s).`);
+      } else if (choice === "replace") {
+        if (!confirm(`This will delete all ${existing.length} existing item(s). Continue?`)) return;
+        save(parsed);
+        render();
+        alert(`Replaced with ${parsed.length} item(s).`);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function shiftDue(id, days) {
+    const items = load();
+    const it = items.find(i => i.id === id);
+    if (!it || it.stage >= INTERVALS.length) return;
+    it.nextDue += days * DAY_MS;
+    save(items);
+    render();
+  }
+
+  function startEditTitle(id) {
+    editingTitles.add(id);
+    render();
+    const input = document.querySelector(`input.title-edit[data-id="${id}"]`);
+    if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+  }
+
+  function finishEditTitle(id) {
+    editingTitles.delete(id);
+    render();
+  }
+
+  function saveTitle(id, value) {
+    const items = load();
+    const it = items.find(i => i.id === id);
+    if (!it) return;
+    it.text = value;
+    save(items);
+  }
 
   function addItem(text) {
     const items = load();
@@ -460,10 +588,17 @@
            </div>`
         : "";
 
+      const isEditingTitle = editingTitles.has(it.id);
+      const titleHtml = isEditingTitle
+        ? `<input class="title-edit" data-id="${it.id}" value="${escapeHtml(it.text)}"
+             oninput="saveTitle('${it.id}', this.value)"
+             onkeydown="if(event.key==='Enter'||event.key==='Escape'){event.preventDefault();finishEditTitle('${it.id}');}" />`
+        : escapeHtml(it.text);
+
       return `
         <div class="item ${due ? "due" : ""} ${done ? "done" : ""}">
           <div class="row1">
-            <div class="text">${escapeHtml(it.text)}</div>
+            <div class="text">${titleHtml}</div>
             <div class="meta">${metaHtml}</div>
           </div>
           <div class="bar-wrap" onclick="toggleNote('${it.id}')" title="Click to add or edit a note">
@@ -478,6 +613,9 @@
           <div class="actions">
             ${done ? "" : `<button class="primary" onclick="markReviewed('${it.id}')">Reviewed</button>`}
             ${done ? "" : `<button class="warn" onclick="markForgot('${it.id}')">Forgot</button>`}
+            ${done ? "" : `<button class="small shift" onclick="shiftDue('${it.id}', -1)" title="Move review 1 day earlier">−1d</button>`}
+            ${done ? "" : `<button class="small shift" onclick="shiftDue('${it.id}', 1)" title="Postpone review by 1 day">+1d</button>`}
+            <button class="small" onclick="${isEditingTitle ? `finishEditTitle('${it.id}')` : `startEditTitle('${it.id}')`}">${isEditingTitle ? "Done" : "Edit"}</button>
             <button class="danger" onclick="deleteItem('${it.id}')">Delete</button>
           </div>
         </div>
@@ -522,11 +660,22 @@
     if (e.key === "Enter") document.getElementById("addBtn").click();
   });
 
+  document.getElementById("exportBtn").addEventListener("click", exportData);
+  document.getElementById("importBtn").addEventListener("click", () => {
+    document.getElementById("importFile").click();
+  });
+  document.getElementById("importFile").addEventListener("change", e => {
+    const file = e.target.files[0];
+    if (file) importData(file);
+    e.target.value = ""; // reset so re-importing the same file works
+  });
+
   render();
   // Re-render every minute so "due" status updates without a page reload.
-  // Skip when a textarea is focused so we don't interrupt note typing.
+  // Skip when a textarea or edit input is focused so we don't interrupt typing.
   setInterval(() => {
-    if (document.activeElement && document.activeElement.tagName === "TEXTAREA") return;
+    const el = document.activeElement;
+    if (el && (el.tagName === "TEXTAREA" || el.classList.contains("title-edit"))) return;
     render();
   }, 60 * 1000);
 </script>
